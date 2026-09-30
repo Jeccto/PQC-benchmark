@@ -62,7 +62,7 @@ def run_client(host, message, log):
         session_key = derive_key(ss_x, ss_pq, transcript)
         log(f"Session key: {session_key.hex()}")
 
-        nonce = os.urandom(12) # nonce: number used once
+        nonce = os.urandom(12) # nonce: number used once, 12: bytes
         #!AES-GCM requires a nonce (number used once) — 12 bytes is the standard size for GCM. It doesn't need to be secret, just unique per encryption with the same key
         #!reusing a nonce with the same key catastrophically breaks GCM's security.
         ciphertext_msg = AESGCM(session_key).encrypt(nonce, message.encode(), None)
@@ -83,3 +83,40 @@ class ClientApp:
         tk.Label(root, text="Server IP:").pack(anchor="w", padx=10, pady=(10, 0))
         self.ip_entry = tk.Entry(root)
         self.ip_entry.insert(0, "192.168.56.10")
+        self.ip_entry.pack(fill="x", padx=10)
+
+        tk.Label(root, text="Message:").pack(anchor="w", padx=10, pady=(10, 0))
+        self.msg_entry = tk.Entry(root)
+        self.msg_entry.insert(0, "hello from the post-quantum era")
+        self.msg_entry.pack(fill="x", padx=10)
+
+        self.send_btn = tk.Button(root, text="Send Encrypted Message", command=self.on_send)
+        self.send_btn.pack(pady=10)
+
+        tk.Label(root, text="Log:").pack(anchor="w", padx=10)
+        self.log_box = scrolledtext.ScrolledText(root, height=12, state="disabled")
+        self.log_box.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    def log(self, text):
+        self.log_box.config(state="normal")
+        self.log_box.insert("end", text + "\n")
+        self.log_box.see("end")
+        self.log_box.config(state="disabled")
+
+    def on_send(self):
+        host = self.ip_entry.get().strip()
+        message = self.msg_entry.get()
+        if not host or not message:
+            messagebox.showwarning("Missing input", "Enter both an IP and a message.")
+            return
+        self.send_btn.config(state="disabled")
+        threading.Thread(target=self._send_thread, args=(host, message), daemon=True).start()
+
+    def _send_thread(self, host, message):
+        run_client(host, message, self.log)
+        self.send_btn.config(state="normal")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ClientApp(root)
+    root.mainloop()
