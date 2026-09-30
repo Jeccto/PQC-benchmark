@@ -99,7 +99,12 @@ def run_demo():
         #    final 32-byte Shared Secret (K).
         # ==============================================================================
 
-    assert shared_secret_sender == shared_secret_receiver, "Shared secrets don't match!" #both values are hashes of the sender m and the decrypted m from the receiver to test integrity
+    assert shared_secret_sender == shared_secret_receiver, "Shared secrets don't match!"
+
+    #• Bob has a public key and a long-term private/secret key.
+    #• Alice takes Bob's public key and runs an Encapsulate function. This function outputs two things: a random Shared Secret and a Ciphertext.
+    #• Alice sends the Ciphertext to Bob. Bob uses his long-term private key to Decapsulate it and recover the exact same Shared Secret.
+
 
     print(f"Algorithm: {KEM_NAME}")
     print(f"Public key size:     {len(public_key)} bytes")

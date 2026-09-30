@@ -30,6 +30,23 @@ def bench_mlkem(kem_name="ML-KEM-768"):
 
     return keygen_time, encaps_time, decaps_time
 
+#  ============================================================================
+#  X25519 KEY EXCHANGE (Classical Pre-Quantum Baseline)
+#  ============================================================================
+#  What it is: A highly efficient Elliptic-Curve Diffie-Hellman (ECDH) protocol.
+#
+#  How it works:
+#  1. Both parties generate a random private key.
+#  2. They derive a 32-byte public key using a secure mathematical curve (Curve25519).
+#  3. They swap public keys and multiply them by their own private keys.
+#  4. Because of elliptic curve math, both sides arrive at the exact same secret.
+#
+#  Why it's here: In this hybrid PQC project, X25519 provides a fast, time-tested
+#  classical safety net. It protects traffic against current threats while new
+#  post-quantum algorithms (like ML-KEM) protect against future quantum computers.
+#  ============================================================================
+
+
 def bench_x25519():
     keygen_time = bench(lambda: X25519PrivateKey.generate())
 

@@ -60,7 +60,7 @@ def run_client():
     print(f"Session key: {session_key.hex()}")
 
     nonce = os.urandom(12)
-    plaintext = b"hello from the post-quantum era"
+    plaintext = b"hello from the post-quantum era!"
     ciphertext_msg = AESGCM(session_key).encrypt(nonce, plaintext, None)
     send_blob(sock, nonce + ciphertext_msg)
 
