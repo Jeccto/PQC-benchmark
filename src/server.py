@@ -6,6 +6,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.exceptions import InvalidTag  ### NEW: specific exception AES-GCM raises on tampering
 
 KEM_NAME = "ML-KEM-768"
 HOST = "0.0.0.0" #listen on all available interfaces
@@ -98,8 +99,18 @@ def run_server():
     encrypted_msg = recv_blob(conn)
     nonce = encrypted_msg[:12]
     ciphertext_msg = encrypted_msg[12:]
-    plaintext = AESGCM(session_key).decrypt(nonce, ciphertext_msg, None)
-    print(f"Decrypted message from client: {plaintext.decode()}")
+
+    ### NEW: AES-GCM authenticates as well as encrypts — decrypt() recomputes the
+    ### authentication tag over (nonce, ciphertext) and compares it to the one sent.
+    ### If anything was tampered with, it raises InvalidTag instead of returning
+    ### garbage plaintext. ML-KEM's decap_secret() above never throws on a corrupted
+    ### ciphertext (implicit rejection) — it just silently produces a wrong secret,
+    ### which is exactly why the real tamper-evidence has to live here, at the AES layer.
+    try:
+        plaintext = AESGCM(session_key).decrypt(nonce, ciphertext_msg, None)
+        print(f"Decrypted message from client: {plaintext.decode()}")
+    except InvalidTag:
+        print(f"TAMPER DETECTED from {addr}: ciphertext/nonce failed authentication — message rejected.")
 
     conn.close()
     sock.close()

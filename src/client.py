@@ -37,7 +37,14 @@ def recv_blob(conn):
         data += chunk
     return data
 
-def run_client(host, message, log):
+### NEW: flips every bit in the first byte of a bytes object. bytearray is used
+### because bytes objects are immutable — you can't modify one in place.
+def corrupt_first_byte(data: bytes) -> bytes:
+    corrupted = bytearray(data)
+    corrupted[0] ^= 0xFF
+    return bytes(corrupted)
+
+def run_client(host, message, log, tamper_target="None"):  ### NEW: tamper_target parameter
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((host, PORT))
@@ -62,13 +69,25 @@ def run_client(host, message, log):
         session_key = derive_key(ss_x, ss_pq, transcript)
         log(f"Session key: {session_key.hex()}")
 
-        nonce = os.urandom(12) # nonce: number used once, 12: bytes
-        #!AES-GCM requires a nonce (number used once) — 12 bytes is the standard size for GCM. It doesn't need to be secret, just unique per encryption with the same key
-        #!reusing a nonce with the same key catastrophically breaks GCM's security.
+        nonce = os.urandom(12)
         ciphertext_msg = AESGCM(session_key).encrypt(nonce, message.encode(), None)
-        send_blob(sock, nonce + ciphertext_msg)
 
-        log("Message sent and encrypted successfully.")
+
+
+        ### NEW: corrupt either the ciphertext or the nonce, based on the dropdown choice.
+        ### Either one invalidates the AES-GCM authentication tag, since GCM authenticates
+        ### over both the nonce and the ciphertext together.
+        if tamper_target == "Ciphertext":
+            ciphertext_msg = corrupt_first_byte(ciphertext_msg)
+            log("Tampering simulated: corrupted first byte of ciphertext.")
+        elif tamper_target == "Nonce":
+            nonce = corrupt_first_byte(nonce)
+            log("Tampering simulated: corrupted first byte of nonce.")
+
+
+
+        send_blob(sock, nonce + ciphertext_msg)
+        log("Message sent.")
         sock.close()
         kem.free()
     except Exception as e:
@@ -78,17 +97,25 @@ def run_client(host, message, log):
 class ClientApp:
     def __init__(self, root):
         root.title("PQ Hybrid Client")
-        root.geometry("500x400")
+        root.geometry("500x440")
 
         tk.Label(root, text="Server IP:").pack(anchor="w", padx=10, pady=(10, 0))
         self.ip_entry = tk.Entry(root)
-        self.ip_entry.insert(0, "192.168.56.10")
+        self.ip_entry.insert(0, "127.0.0.1")
         self.ip_entry.pack(fill="x", padx=10)
 
         tk.Label(root, text="Message:").pack(anchor="w", padx=10, pady=(10, 0))
         self.msg_entry = tk.Entry(root)
         self.msg_entry.insert(0, "hello from the post-quantum era")
         self.msg_entry.pack(fill="x", padx=10)
+
+        ### NEW: dropdown replacing the earlier checkbox idea — lets you pick which
+        ### field to corrupt, so you can demo multiple tamper scenarios without
+        ### changing code between runs.
+        tk.Label(root, text="Tamper target:").pack(anchor="w", padx=10, pady=(10, 0))
+        self.tamper_var = tk.StringVar(value="None")
+        self.tamper_menu = tk.OptionMenu(root, self.tamper_var, "None", "Ciphertext", "Nonce")
+        self.tamper_menu.pack(fill="x", padx=10)
 
         self.send_btn = tk.Button(root, text="Send Encrypted Message", command=self.on_send)
         self.send_btn.pack(pady=10)
@@ -106,14 +133,15 @@ class ClientApp:
     def on_send(self):
         host = self.ip_entry.get().strip()
         message = self.msg_entry.get()
+        tamper_target = self.tamper_var.get()  ### NEW
         if not host or not message:
             messagebox.showwarning("Missing input", "Enter both an IP and a message.")
             return
         self.send_btn.config(state="disabled")
-        threading.Thread(target=self._send_thread, args=(host, message), daemon=True).start()
+        threading.Thread(target=self._send_thread, args=(host, message, tamper_target), daemon=True).start()
 
-    def _send_thread(self, host, message):
-        run_client(host, message, self.log)
+    def _send_thread(self, host, message, tamper_target):
+        run_client(host, message, self.log, tamper_target)
         self.send_btn.config(state="normal")
 
 if __name__ == "__main__":
