@@ -5,14 +5,20 @@ import threading
 import tkinter as tk
 from tkinter import scrolledtext, messagebox
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, load_pem_public_key
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.exceptions import InvalidSignature
 import os
 
 KEM_NAME = "ML-KEM-768"
 PORT = 5000
+
+### NEW: the server's public identity key, obtained out-of-band (copied from the server
+### after running gen_identity.py there). This file must sit next to client.py.
+with open("server_identity_public.pem", "rb") as f:
+    SERVER_IDENTITY_PUB = load_pem_public_key(f.read())
 
 def raw_public_bytes(pubkey):
     return pubkey.public_bytes(Encoding.Raw, PublicFormat.Raw)
@@ -37,14 +43,13 @@ def recv_blob(conn):
         data += chunk
     return data
 
-### NEW: flips every bit in the first byte of a bytes object. bytearray is used
-### because bytes objects are immutable — you can't modify one in place.
+### NEW: flips every bit in the first byte of a bytes object, for the tamper demo.
 def corrupt_first_byte(data: bytes) -> bytes:
     corrupted = bytearray(data)
     corrupted[0] ^= 0xFF
     return bytes(corrupted)
 
-def run_client(host, message, log, tamper_target="None"):  ### NEW: tamper_target parameter
+def run_client(host, message, log, tamper_target="None"):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((host, PORT))
@@ -52,6 +57,18 @@ def run_client(host, message, log, tamper_target="None"):  ### NEW: tamper_targe
 
         server_x_pub_bytes = recv_blob(sock)
         server_kem_pub_bytes = recv_blob(sock)
+        signature = recv_blob(sock)  ### NEW: the server's Ed25519 signature over its two public keys
+
+        ### NEW: verify the signature BEFORE trusting these keys for anything.
+        ### If this fails, either the keys were tampered with in transit, or this
+        ### isn't actually the real server (e.g. a MITM presenting its own keys).
+        try:
+            SERVER_IDENTITY_PUB.verify(signature, server_x_pub_bytes + server_kem_pub_bytes)
+            log("Server identity verified.")
+        except InvalidSignature:
+            log("AUTHENTICATION FAILED: server signature invalid — aborting handshake.")
+            sock.close()
+            return
 
         server_x_pub = X25519PublicKey.from_public_bytes(server_x_pub_bytes)
 
@@ -72,19 +89,14 @@ def run_client(host, message, log, tamper_target="None"):  ### NEW: tamper_targe
         nonce = os.urandom(12)
         ciphertext_msg = AESGCM(session_key).encrypt(nonce, message.encode(), None)
 
-
-
-        ### NEW: corrupt either the ciphertext or the nonce, based on the dropdown choice.
-        ### Either one invalidates the AES-GCM authentication tag, since GCM authenticates
-        ### over both the nonce and the ciphertext together.
+        ### NEW: corrupt either the ciphertext or the nonce, based on the dropdown choice,
+        ### for the tamper-detection demo (separate failure mode from authentication above).
         if tamper_target == "Ciphertext":
             ciphertext_msg = corrupt_first_byte(ciphertext_msg)
             log("Tampering simulated: corrupted first byte of ciphertext.")
         elif tamper_target == "Nonce":
             nonce = corrupt_first_byte(nonce)
             log("Tampering simulated: corrupted first byte of nonce.")
-
-
 
         send_blob(sock, nonce + ciphertext_msg)
         log("Message sent.")
@@ -109,9 +121,6 @@ class ClientApp:
         self.msg_entry.insert(0, "hello from the post-quantum era")
         self.msg_entry.pack(fill="x", padx=10)
 
-        ### NEW: dropdown replacing the earlier checkbox idea — lets you pick which
-        ### field to corrupt, so you can demo multiple tamper scenarios without
-        ### changing code between runs.
         tk.Label(root, text="Tamper target:").pack(anchor="w", padx=10, pady=(10, 0))
         self.tamper_var = tk.StringVar(value="None")
         self.tamper_menu = tk.OptionMenu(root, self.tamper_var, "None", "Ciphertext", "Nonce")
@@ -133,7 +142,7 @@ class ClientApp:
     def on_send(self):
         host = self.ip_entry.get().strip()
         message = self.msg_entry.get()
-        tamper_target = self.tamper_var.get()  ### NEW
+        tamper_target = self.tamper_var.get()
         if not host or not message:
             messagebox.showwarning("Missing input", "Enter both an IP and a message.")
             return

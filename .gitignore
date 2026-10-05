@@ -2,3 +2,5 @@
 __pycache__/
 *.pyc
 /src/note.md
+/src/server_identity_private.pem
+/src/server_identity_public.pem
