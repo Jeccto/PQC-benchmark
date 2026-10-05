@@ -1,8 +1,34 @@
+import os
 import oqs
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.exceptions import InvalidSignature
 
 KEM_NAME = "ML-KEM-768"
 
-def run_demo():
+
+def demo_x25519():
+    print("\n=== X25519 (classical key exchange) ===")
+    alice_priv = X25519PrivateKey.generate()
+    bob_priv = X25519PrivateKey.generate()
+
+    # each side only needs their own private key + the other side's public key
+    # to compute the same shared secret — neither key ever gets sent
+    ss_alice = alice_priv.exchange(bob_priv.public_key())
+    ss_bob = bob_priv.exchange(alice_priv.public_key())
+
+    assert ss_alice == ss_bob, "X25519 shared secrets don't match!"
+    print(f"Shared secret size: {len(ss_alice)} bytes")
+    print(f"Shared secret (hex): {ss_alice.hex()}")
+    print("Success — both sides derived the same secret.")
+    return ss_alice
+
+
+def demo_mlkem():
+    print(f"\n=== {KEM_NAME} (post-quantum key exchange) ===")
     with oqs.KeyEncapsulation(KEM_NAME) as receiver:
         public_key = receiver.generate_keypair()#Receiver object hold the private key s, it is hidden since It's private!! Receiver only!!
         print(f"Public key (t=A.s+e) : {public_key}")
@@ -105,7 +131,6 @@ def run_demo():
     #• Alice takes Bob's public key and runs an Encapsulate function. This function outputs two things: a random Shared Secret and a Ciphertext.
     #• Alice sends the Ciphertext to Bob. Bob uses his long-term private key to Decapsulate it and recover the exact same Shared Secret.
 
-
     print(f"Algorithm: {KEM_NAME}")
     print(f"Public key size:     {len(public_key)} bytes")
     print(f"Ciphertext size:     {len(ciphertext)} bytes")
@@ -113,5 +138,63 @@ def run_demo():
     print(f"Shared secret (hex): {shared_secret_sender.hex()}")
     print("Success — both sides derived the same secret.")
 
+    return shared_secret_sender
+
+
+def demo_ed25519():
+    print("\n=== Ed25519 (digital signature) ===")
+    priv = Ed25519PrivateKey.generate()  # generates the private scalar a, clamped internally
+    pub = priv.public_key()  # derives A = a*G
+
+    message = b"these handshake keys really came from me"
+    signature = priv.sign(message)  # deterministic nonce r, computes (R, s)
+    print(f"Signature size: {len(signature)} bytes")
+
+    pub.verify(signature, message)  # checks s*G == R + h*A, raises if it doesn't hold
+    print("Verification succeeded for an untouched message.")
+
+    try:
+        pub.verify(signature, b"a different, forged message")
+        print("ERROR: forged message incorrectly verified!")
+    except InvalidSignature:
+        print("Verification correctly rejected a forged message.")
+
+
+def demo_hkdf(ss_classical, ss_pq):
+    print("\n=== HKDF (key derivation) ===")
+    transcript = b"demo-transcript"  # stand-in for the real handshake transcript
+    key = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=b"hybrid-demo-v1" + transcript,
+    ).derive(ss_classical + ss_pq)  # mashes both secrets into one clean AES key
+
+    print(f"Derived session key size: {len(key)} bytes")
+    print(f"Derived session key (hex): {key.hex()}")
+    return key
+
+
+def demo_aesgcm(session_key):
+    print("\n=== AES-GCM (authenticated encryption) ===")
+    nonce = os.urandom(12)  # number used once, must never repeat with the same key
+    plaintext = b"hello from the post-quantum era"
+
+    ciphertext = AESGCM(session_key).encrypt(nonce, plaintext, None)
+    print(f"Ciphertext size: {len(ciphertext)} bytes (plaintext was {len(plaintext)} bytes)")
+
+    decrypted = AESGCM(session_key).decrypt(nonce, ciphertext, None)
+    print(f"Decrypted message: {decrypted.decode()}")
+    assert decrypted == plaintext
+
+
+def run_all_demos():
+    ss_classical = demo_x25519()
+    ss_pq = demo_mlkem()
+    demo_ed25519()
+    session_key = demo_hkdf(ss_classical, ss_pq)
+    demo_aesgcm(session_key)
+
+
 if __name__ == "__main__":
-    run_demo()
+    run_all_demos()
