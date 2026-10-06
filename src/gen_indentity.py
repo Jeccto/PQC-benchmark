@@ -12,5 +12,11 @@ with open("server_identity_private.pem", "wb") as f:
 with open("server_identity_public.pem", "wb") as f:
     f.write(pub.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
 
+with open("Benchmark/server_identity_private.pem", "wb") as f:
+    f.write(priv.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
+
+with open("Benchmark/server_identity_public.pem", "wb") as f:
+    f.write(pub.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
+
 print("Identity keypair generated.")
 print("Give server_identity_public.pem to the client. Keep the private one on the server only.")

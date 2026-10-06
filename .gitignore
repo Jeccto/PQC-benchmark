@@ -4,3 +4,7 @@ __pycache__/
 /src/note.md
 /src/server_identity_private.pem
 /src/server_identity_public.pem
+/ToAdd.md
+/src/Benchmark/bench_results.json
+/src/Benchmark/server_identity_private.pem
+/src/Benchmark/server_identity_public.pem
