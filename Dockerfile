@@ -1,7 +1,7 @@
 FROM archlinux:latest
 
 RUN pacman -Syu --noconfirm \
-    base-devel cmake ninja git python python-pip openssl iputils
+    base-devel cmake ninja git python python-pip openssl iputils tcpdump tk
 
 RUN git clone --depth=1 https://github.com/open-quantum-safe/liboqs /opt/liboqs && \
     cmake -S /opt/liboqs -B /opt/liboqs/build -DBUILD_SHARED_LIBS=ON && \
@@ -9,10 +9,12 @@ RUN git clone --depth=1 https://github.com/open-quantum-safe/liboqs /opt/liboqs 
     cmake --install /opt/liboqs/build && \
     ldconfig
 
-WORKDIR /app
-COPY src/ ./src/
-COPY requirements.txt .
+ENV LD_LIBRARY_PATH=/usr/local/lib
 
+WORKDIR /app
+COPY requirements.txt .
 RUN pip install --break-system-packages -r requirements.txt
+COPY src/ ./src/
 
 EXPOSE 5000
+CMD ["python", "src/server.py"]
