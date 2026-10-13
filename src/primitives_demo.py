@@ -35,9 +35,8 @@ def demo_mlkem():
 
         with oqs.KeyEncapsulation(KEM_NAME) as sender:
             ciphertext, shared_secret_sender = sender.encap_secret(public_key)
-            print(f"Ciphertext ( u=transpose(A).r+e1 , V=transpose(A).r+e2+encode(m) ): {ciphertext}") #sender chooses r and small errors e1 and e2
+            print(f"Ciphertext ( u=transpose(A).r+e1 , V=transpose(A).r+e2+encode(m) ): {ciphertext}") #sender chooses r and small errors e1 and e2 and m which corresponds to the security category
 
-            #m is the message to transfer, we encode it:
 
             # ==============================================================================
             # ML-KEM-768 MATHEMATICAL ENCODING MECHANISM: Encode(m)
@@ -146,7 +145,7 @@ def demo_ed25519():
     priv = Ed25519PrivateKey.generate()  # generates the private scalar a, clamped internally
     pub = priv.public_key()  # derives A = a*G
 
-    message = b"these handshake keys really came from me"
+    message = b"these handshake keys really came from me" # b"" : byte string
     signature = priv.sign(message)  # deterministic nonce r, computes (R, s)
     print(f"Signature size: {len(signature)} bytes")
 
