@@ -1,0 +1,30 @@
+# Docker Compose file for running the PQ hybrid server on Docker Desktop for Windows.
+#
+#   docker compose up --build          # build + run in the foreground (Ctrl+C stops)
+#   docker compose up --build -d       # detached; logs with: docker compose logs -f
+#   docker compose down                # remove the container
+#
+# The published port means the client reaches the server at localhost:5000.
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.windows   # kept in sync with ./Dockerfile (same Linux image)
+    image: pq-hybrid-kem
+    container_name: server
+    ports:
+      - "5000:5000"
+    stdin_open: true   # same as `docker run -i`
+    tty: true          # same as `docker run -t`
+
+    # Every fresh container generates a NEW Ed25519 identity key unless you mount one,
+    # which means re-copying the public key with `docker cp` after each restart. For a
+    # stable identity, generate the keypair once (see WINDOWS.md §4) and uncomment:
+    #
+    # volumes:
+    #   - ./server_identity_private.pem:/app/src/server_identity_private.pem
+    #
+    # WARNING: the host file must EXIST before you run `docker compose up` — if it does
+    # not, Docker creates an empty DIRECTORY at that path and the server will fail with
+    # "Could not deserialize key data".
